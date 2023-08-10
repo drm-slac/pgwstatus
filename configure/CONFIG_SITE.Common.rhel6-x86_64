@@ -1,0 +1,18 @@
+# 1 "../toolchain.c"
+# 1 "<built-in>"
+# 1 "<command-line>"
+# 1 "../toolchain.c"
+# 12 "../toolchain.c"
+CONFIG_LOADED=YES
+
+
+
+GNUISH=YES
+USR_CXXFLAGS += -std=c++11
+
+
+
+
+
+
+USR_LDFLAGS += -Wl,--as-needed
