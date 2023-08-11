@@ -4,158 +4,242 @@
 #include <string>
 #include <iostream>
 
+#include <getopt.h>
 #include <pvxs/client.h>
 
 using namespace pvxs;
 using namespace std;
 
-std::string convertFromIPAddr( std::string ipAddr);
-bool showPVConnections( client::Context, string gatewayName);
-bool showIOCConnections( client::Context, string gatewayName);
-bool showRPCResults( client::Context, string, string gatewayName);
-bool showPermissions( client::Context context, string gatewayName, pvxs::Value result);
-bool getPVData( client::Context context, string pvName, string errContext, pvxs::Value &pvData);
-bool showPVRates( client::Context context, string gatewayName, bool isDownstream, bool findTransmitRate);
-bool showHostRates( client::Context context, string gatewayName, bool isDownstream, bool findTransmitRate);
+class GatewayStatus
+        {
+        public:
+                GatewayStatus();
+                ~GatewayStatus();
+
+                void setGatewayName( string gatewayName);
+
+                bool showPVConnections();
+                bool showIOCConnections();
+                bool showPVRates( bool isDownstream, bool findTransmitRate);
+                bool showHostRates( bool isDownstream, bool findTransmitRate);
+
+                std::string convertFromIPAddr( std::string ipAddr);
+        private:
+                bool showRPCResults( string pvName);
+                bool showPermissions( pvxs::Value result);
+                bool getPVData( string pvName, string errContext, pvxs::Value &pvData);
+
+                string _gatewayName;
+                client::Context _context;
+        };
+
+unsigned int
+arguments( int argc, char *const argv[])
+        {
+        int c;
+
+	while (( c = getopt( argc, argv, "u:h")) != -1)
+                {
+		switch (c)
+                        {
+		case 'u':
+			fprintf( stdout, "Option 'u': '%s'\n", optarg);
+			break;
+
+		case 'h':
+                        fprintf( stdout, "Usage: %s gateway-name ...\n", argv[0]);
+                        exit( 0);
+                        break;
+
+		default:
+			fprintf( stderr, "Illegal argument \"%c\"\n", c);
+			exit( 1);
+                        }
+                }
+
+        return optind;
+        }
+
 
 int
-main( int argc, char *argv[])
+main( int argc, char *const argv[])
         {
         unsigned int i;
         unsigned int nargs = argc;
 
-        client::Context context( client::Context::fromEnv());
+        GatewayStatus status;
 
-        if( nargs <= 1)
+        for( i = arguments( argc, argv); i < nargs; i++)
                 {
-                printf( "Usage: %s gateway-name ...\n", argv[0]);
-                exit( 1);
-                }
+                status.setGatewayName( argv[i]);
 
-        for( i = 1; i < nargs; i++)
-                {
-                printf( "gateway %s:\n", argv[i]);
-
-                if( ! showIOCConnections( context, argv[i]))
+                if( ! status.showIOCConnections())
                         continue;
 
-                (void)showPVConnections( context, argv[i]);
+                (void)status.showPVConnections();
 
-                printf( "    Client and IOC Transfer Rates :\n");
-                (void)showHostRates( context, argv[i], false, false);
-                (void)showHostRates( context, argv[i], true, true);
-                (void)showHostRates( context, argv[i], true, false);
-                (void)showHostRates( context, argv[i], false, true);
+                fprintf( stdout, "    Client and IOC Transfer Rates :\n");
+                fprintf( stdout, "        Gateway's Server Side:\n");
+                (void)status.showHostRates( true, true);
+                (void)status.showHostRates( true, false);
+                fprintf( stdout, "        Gateway's Client Side:\n");
+                (void)status.showHostRates( false, false);
+                (void)status.showHostRates( false, true);
 
-                printf( "    PV Transfer Rates:\n");
-                (void)showPVRates( context, argv[i], false, false);
-                (void)showPVRates( context, argv[i], true, true);
-                (void)showPVRates( context, argv[i], true, false);
-                (void)showPVRates( context, argv[i], false, true);
+                fprintf( stdout, "    PV Transfer Rates:\n");
+                fprintf( stdout, "        Gateway's Server Side:\n");
+                (void)status.showPVRates( true, true);
+                (void)status.showPVRates( true, false);
+                fprintf( stdout, "        Gateway's Client Side:\n");
+                (void)status.showPVRates( false, false);
+                (void)status.showPVRates( false, true);
                 }
 
-        context.close();
         return 0;
         }
 
-bool
-showIOCConnections( client::Context context, string gatewayName)
+GatewayStatus::
+GatewayStatus() :
+_context( client::Context::fromEnv())
+        {
+        }
+
+GatewayStatus::
+~GatewayStatus()
+        {
+        _context.close();
+        }
+
+void GatewayStatus::
+setGatewayName( string gatewayName)
+        {
+
+        _gatewayName = gatewayName;
+        fprintf( stdout, "Gateway %s:\n", _gatewayName.c_str());
+        }
+
+bool GatewayStatus::
+getPVData( string pvName, string errContext, pvxs::Value &pvData)
+        {
+
+        try
+                {
+                Value result = _context.get( pvName.c_str()).exec()->wait( 5.0);
+                pvData = result;
+                }
+            catch( client::Timeout &)
+                {
+                fprintf( stdout, "    Attempt to %s could not be completed.\n", errContext.c_str());
+                return false;
+                }
+
+        if( ! pvData.valid())
+                {
+                fprintf( stdout, "    Failed to %s\n", errContext.c_str());
+                return false;
+                }
+
+        return true;
+        }
+
+bool GatewayStatus::
+showIOCConnections()
         {
         Value reply;
         unsigned int i;
-        string clientPV = gatewayName + ":clients";
+        string clientPV = _gatewayName + ":clients";
 
-        if( ! getPVData( context, clientPV, "find IOC connections", reply))
+        if( ! getPVData( clientPV, "find IOC connections", reply))
                 return false;
 
         shared_array<const string> val = reply["value"].as<shared_array<const string>>();
 
         if( val.size() > 0)
-                printf( "    Access to %lu IOCs:\n", val.size());
+                fprintf( stdout, "    Access to %lu IOCs:\n", val.size());
             else
-                printf( "    No IOCs currently accessed\n");
+                fprintf( stdout, "    No IOCs currently accessed\n");
 
         for( i = 0; i < val.size(); i++)
                 {
                 string host = convertFromIPAddr( val[i]);
-                printf( "        %s\n", host.c_str());
+                fprintf( stdout, "        %s\n", host.c_str());
                 }
         return true;
         }
 
-bool
-showPVConnections( client::Context context, string gatewayName)
+bool GatewayStatus::
+showPVConnections()
         {
         Value reply;
         unsigned int i;
-        string clientPV = gatewayName + ":cache";
+        string clientPV = _gatewayName + ":cache";
 
-        if( ! getPVData( context, clientPV, "find PV data", reply))
+        if( ! getPVData( clientPV, "find PV data", reply))
                 return false;
 
         shared_array<const string> val = reply["value"].as<shared_array<const string>>();
 
         if( val.size() > 0)
-                printf( "    Access to %lu PVs:\n", val.size());
+                fprintf( stdout, "    Access to %lu PVs:\n", val.size());
             else
-                printf( "    No PVs currently accessed\n");
+                fprintf( stdout, "    No PVs currently accessed\n");
         for( i = 0; i < val.size(); i++)
                 {
                 string pvName = val[i];
-                printf( "        %s", pvName.c_str());
-                printf( "\n");
-                showRPCResults( context, gatewayName, pvName);
+                fprintf( stdout, "        %s", pvName.c_str());
+                fprintf( stdout, "\n");
+                showRPCResults( pvName);
                 }
 
         return true;
         }
 
-bool
-showRPCResults( client::Context context, string gatewayName, string pvName)
+bool GatewayStatus::
+showRPCResults( string pvName)
         {
         Value reply;
-        string clientPV = gatewayName + ":asTest";
+        string clientPV = _gatewayName + ":asTest";
 
         try
                 {
-                Value result = context.rpc( clientPV.c_str()).arg( "pv", pvName).exec()->wait( 5.0);
+                Value result = _context.rpc( clientPV.c_str()).arg( "pv", pvName).exec()->wait( 5.0);
                 reply = result;
                 }
             catch( client::Timeout &)
                 {
-                printf( "       Cannot access gateway '%s' for details on '%s'\n", gatewayName.c_str(), pvName.c_str());
+                fprintf( stdout, "       Cannot access gateway '%s' for details on '%s'\n", _gatewayName.c_str(), pvName.c_str());
                 return false;
                 }
             catch( ...)
                 {
-                printf( "       Cannot retrieve details for %s'\n", pvName.c_str());
+                fprintf( stdout, "       Cannot retrieve details for %s'\n", pvName.c_str());
                 return false;
                 }
 
         if( ! reply.valid())
                 {
-                printf( "       No details available for '%s' from gateway '%s'\n", pvName.c_str(), gatewayName.c_str());
+                fprintf( stdout, "       No details available for '%s' from gateway '%s'\n", pvName.c_str(), _gatewayName.c_str());
                 return false;
                 }
 
         string pv = reply["pv"].as<string>();
         if( pv != pvName)
-                printf( "       <<Software Error>> Requested '%s' details but found '%s'.  Attempting to continue.\n", pvName.c_str(), pv.c_str());
+                fprintf( stdout, "       <<Software Error>> Requested '%s' details but found '%s'.  Attempting to continue.\n", pvName.c_str(), pv.c_str());
 
-        printf( "            requested by: %s on %s\n", reply["account"].as<string>().c_str(), convertFromIPAddr( reply["peer"].as<string>()).c_str());
-        printf( "            ASG applied: %s (ASL %d)\n", reply["asg"].as<string>().c_str(), reply["asl"].as<int32_t>());
+        fprintf( stdout, "            requested by: %s on %s\n", reply["account"].as<string>().c_str(), convertFromIPAddr( reply["peer"].as<string>()).c_str());
+        fprintf( stdout, "            ASG applied: %s (ASL %d)\n", reply["asg"].as<string>().c_str(), reply["asl"].as<int32_t>());
 
-        showPermissions( context, gatewayName, reply);
+        showPermissions( reply);
         return true;
         }
 
-bool
-showPermissions( client::Context context, string gatewayName, pvxs::Value fields)
+bool GatewayStatus::
+showPermissions( pvxs::Value fields)
         {
         Value perms = fields["permission"];
 
-        printf( "            PUT operations are %sallowed\n", perms["put"].as<bool>() ? "" : "NOT ");
-        printf( "            RPC operations are %sallowed\n", perms["rpc"].as<bool>() ? "" : "NOT ");
+        fprintf( stdout, "            PUT operations are %sallowed\n", perms["put"].as<bool>() ? "" : "NOT ");
+        fprintf( stdout, "            RPC operations are %sallowed\n", perms["rpc"].as<bool>() ? "" : "NOT ");
 
         //for( Value fld : perms.ichildren())
                 //{
@@ -164,11 +248,11 @@ showPermissions( client::Context context, string gatewayName, pvxs::Value fields
         return true;
         }
 
-bool
-showHostRates( client::Context context, string gatewayName, bool isDownstream, bool findTransmitRate)
+bool GatewayStatus::
+showHostRates( bool isDownstream, bool findTransmitRate)
         {
         string errContext;
-        string clientPV = gatewayName;
+        string clientPV = _gatewayName;
 
         if( isDownstream)
                 {
@@ -194,7 +278,7 @@ showHostRates( client::Context context, string gatewayName, bool isDownstream, b
 
         Value dataRates;
         
-        if( ! getPVData( context, clientPV, errContext, dataRates))
+        if( ! getPVData( clientPV, errContext, dataRates))
                 return false;
 
         Value rateDetails = dataRates["value"];
@@ -222,7 +306,7 @@ showHostRates( client::Context context, string gatewayName, bool isDownstream, b
 
         if( sizeHost != sizeRate || ( isDownstream && ( sizeUser != sizeHost)))
                 {
-                printf( "        Software Error: data rate details are inconsistent. (%lu hosts, %lu speeds)\n", sizeHost, sizeRate);
+                fprintf( stdout, "            Software Error: data rate details are inconsistent. (%lu hosts, %lu speeds)\n", sizeHost, sizeRate);
                 return false;
                 }
 
@@ -233,27 +317,27 @@ showHostRates( client::Context context, string gatewayName, bool isDownstream, b
                 if( findTransmitRate)
                         {
                         if( isDownstream)
-                                printf( "        Gateway transmits %.4g bytes/second  to  %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
+                                fprintf( stdout, "            Gateway transmits %.4g bytes/second  to  %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
                             else
-                                printf( "        Gateway transmits %.4g bytes/second  to  %s\n", rate[i], hostName.c_str());
+                                fprintf( stdout, "            Gateway transmits %.4g bytes/second  to  %s\n", rate[i], hostName.c_str());
                         }
                     else
                         {
                         if( isDownstream)
-                                printf( "        Gateway receives  %.4g bytes/second from %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
+                                fprintf( stdout, "            Gateway receives  %.4g bytes/second from %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
                             else
-                                printf( "        Gateway receives  %.4g bytes/second from %s\n", rate[i], hostName.c_str());
+                                fprintf( stdout, "            Gateway receives  %.4g bytes/second from %s\n", rate[i], hostName.c_str());
                         }
                 }
 
         return true;
         }
 
-bool
-showPVRates( client::Context context, string gatewayName, bool isDownstream, bool findTransmitRate)
+bool GatewayStatus::
+showPVRates( bool isDownstream, bool findTransmitRate)
         {
         string errContext;
-        string clientPV = gatewayName;
+        string clientPV = _gatewayName;
 
         if( isDownstream)
                 {
@@ -279,7 +363,7 @@ showPVRates( client::Context context, string gatewayName, bool isDownstream, boo
 
         Value dataRates;
         
-        if( ! getPVData( context, clientPV, errContext, dataRates))
+        if( ! getPVData( clientPV, errContext, dataRates))
                 return false;
 
         Value rateDetails = dataRates["value"];
@@ -292,26 +376,26 @@ showPVRates( client::Context context, string gatewayName, bool isDownstream, boo
 
         if( numPVs != numRates)
                 {
-                printf( "        Software Error: PV data rate details are inconsistent. (%lu hosts, %lu speeds)\n", numPVs, numRates);
+                fprintf( stdout, "        Software Error: PV data rate details are inconsistent. (%lu hosts, %lu speeds)\n", numPVs, numRates);
                 return false;
                 }
 
         for( unsigned int i = 0; i < numPVs; i++)
                 if( isDownstream)
                         if( findTransmitRate)
-                                printf( "        Gateway forwards %.4g bytes/second of %s data to clients\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway forwards %.4g bytes/second of %s data to clients\n", rate[i], pvName[i].c_str());
                             else
-                                printf( "        Client requests for %s data amount to %.4g bytes/second\n", pvName[i].c_str(), rate[i]);
+                                fprintf( stdout, "            Gateway requests %.4g bytes/second of %s data\n", rate[i], pvName[i].c_str());
                     else
                         if( findTransmitRate)
-                                printf( "        Gateway sends %.4g bytes/second to request %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway sends %.4g bytes/second to request %s data\n", rate[i], pvName[i].c_str());
                             else
-                                printf( "        Gateway receives %.4g bytes/second of %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway receives %.4g bytes/second of %s data\n", rate[i], pvName[i].c_str());
 
         return true;
         }
 
-std::string
+std::string GatewayStatus::
 convertFromIPAddr( std::string ipAddr)
         {
         struct sockaddr_in saddr;
@@ -331,28 +415,4 @@ convertFromIPAddr( std::string ipAddr)
 
         getnameinfo( reinterpret_cast<struct sockaddr *>( &saddr), sizeof saddr, host, sizeof host, nullptr, 0, NI_NOFQDN);
         return hostName = host;
-        }
-
-bool
-getPVData( client::Context context, string pvName, string errContext, pvxs::Value &pvData)
-        {
-
-        try
-                {
-                Value result = context.get( pvName.c_str()).exec()->wait( 5.0);
-                pvData = result;
-                }
-            catch( client::Timeout &)
-                {
-                printf( "    Attempt to %s could not be completed.\n", errContext.c_str());
-                return false;
-                }
-
-        if( ! pvData.valid())
-                {
-                printf( "    Failed to %s\n", errContext.c_str());
-                return false;
-                }
-
-        return true;
         }
