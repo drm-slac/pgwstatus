@@ -17,49 +17,130 @@ class GatewayStatus
                 ~GatewayStatus();
 
                 void setGatewayName( string gatewayName);
+                unsigned int setGatewayOptions( int argc, char *const argv[]);
 
                 bool showPVConnections();
+                bool showTransferRates();
                 bool showIOCConnections();
-                bool showPVRates( bool isDownstream, bool findTransmitRate);
-                bool showHostRates( bool isDownstream, bool findTransmitRate);
 
                 std::string convertFromIPAddr( std::string ipAddr);
         private:
+                void showHelp( string appName);
                 bool showRPCResults( string pvName);
                 bool showPermissions( pvxs::Value result);
+                int checkOptionValue( string value, const string mesg);
+                bool showPVRates( bool isDownstream, bool findTransmitRate);
+                bool showHostRates( bool isDownstream, bool findTransmitRate);
                 bool getPVData( string pvName, string errContext, pvxs::Value &pvData);
 
                 string _gatewayName;
+
+                unsigned int _maxAll;
+                unsigned int _maxPVs;
+                unsigned int _maxPeers;
+
+                bool _showRequestRates;
                 client::Context _context;
         };
 
 unsigned int
-arguments( int argc, char *const argv[])
+findMin( unsigned int a, unsigned int b, unsigned int c)
+        {
+
+        if( a < b)
+                {
+                if( a < c)
+                        return a;
+                return c;
+                }
+        if( b < c)
+                return b;
+        return c;
+        }
+
+unsigned int GatewayStatus::
+setGatewayOptions( int argc, char *const argv[])
         {
         int c;
+        extern int optopt;
+        extern int opterr;
 
-	while (( c = getopt( argc, argv, "u:h")) != -1)
+        opterr = 0;
+	while (( c = getopt( argc, argv, ":hm:p:rs:u:")) != -1)
                 {
 		switch (c)
                         {
+                case ':':
+                        fprintf( stdout, "Missing value for '%c' option.\n\n", optopt);
+                        exit( 1);
+                        break;
+
+                case '?':
+                        fprintf( stdout, "Unrecognized option ('%c')\n\n", optopt);
+                        /* fall through */
+		case 'h':
+                        showHelp( argv[0]);
+                        break;
+
+                case 'm':
+                        _maxAll = checkOptionValue( optarg, "Missing value to limit number of PVs or computer names in report.");
+                        break;
+
+                case 'p':
+                        _maxPVs = checkOptionValue( optarg, "Missing value to limit number of PVs in output.");
+                        break;
+
+                case 'r':
+                        _showRequestRates = true;
+                        break;
+
+                case 's':
+                        _maxPeers = checkOptionValue( optarg, "Missing value to limit number of computer names in output.");
+                        break;
+
 		case 'u':
 			fprintf( stdout, "Option 'u': '%s'\n", optarg);
 			break;
 
-		case 'h':
-                        fprintf( stdout, "Usage: %s gateway-name ...\n", argv[0]);
-                        exit( 0);
-                        break;
-
 		default:
 			fprintf( stderr, "Illegal argument \"%c\"\n", c);
 			exit( 1);
+                        break;
                         }
                 }
 
         return optind;
         }
 
+int GatewayStatus::
+checkOptionValue( string value, const string mesg)
+        {
+
+        if( ! isdigit( value[0]))
+                {
+                fprintf( stderr, "%s\n", mesg.c_str());
+                exit( 1);
+                }
+        return atoi( value.c_str());
+        }
+
+void GatewayStatus::
+showHelp( string appName)
+        {
+
+        fprintf( stdout, "Print status information about EPICS 7 (pvAccess) gateways.\n");
+        fprintf( stdout, "Usage: %s [OPTIONS] gateway-name-prefix ...\n", appName.c_str());
+        fprintf( stdout, "       The 'gateway-name-prefix' is the value of the gateway's\n");
+        fprintf( stdout, "       'statusprefix' entry in its configuration file.\n");
+        fprintf( stdout, "The following options are supported:\n");
+        fprintf( stdout, "  -h   print this message then exit.\n");
+        fprintf( stdout, "  -r   Include the rates measured for requests, both coming\n");
+        fprintf( stdout, "       into the gateway, and then from the gateway to IOCs\n");
+        fprintf( stdout, "  -m N Report only the top 'N' transfer rates for PVs and Servers\n");
+        fprintf( stdout, "  -p N Report only the top 'N' transfer rates for PVs\n");
+        fprintf( stdout, "  -s N Report only the top 'N' transfer rates for Servers\n");
+        exit( 0);
+        }
 
 int
 main( int argc, char *const argv[])
@@ -69,7 +150,7 @@ main( int argc, char *const argv[])
 
         GatewayStatus status;
 
-        for( i = arguments( argc, argv); i < nargs; i++)
+        for( i = status.setGatewayOptions( argc, argv); i < nargs; i++)
                 {
                 status.setGatewayName( argv[i]);
 
@@ -77,22 +158,7 @@ main( int argc, char *const argv[])
                         continue;
 
                 (void)status.showPVConnections();
-
-                fprintf( stdout, "    Client and IOC Transfer Rates :\n");
-                fprintf( stdout, "        Gateway's Server Side:\n");
-                (void)status.showHostRates( true, true);
-                (void)status.showHostRates( true, false);
-                fprintf( stdout, "        Gateway's Client Side:\n");
-                (void)status.showHostRates( false, false);
-                (void)status.showHostRates( false, true);
-
-                fprintf( stdout, "    PV Transfer Rates:\n");
-                fprintf( stdout, "        Gateway's Server Side:\n");
-                (void)status.showPVRates( true, true);
-                (void)status.showPVRates( true, false);
-                fprintf( stdout, "        Gateway's Client Side:\n");
-                (void)status.showPVRates( false, false);
-                (void)status.showPVRates( false, true);
+                (void)status.showTransferRates();
                 }
 
         return 0;
@@ -102,6 +168,11 @@ GatewayStatus::
 GatewayStatus() :
 _context( client::Context::fromEnv())
         {
+
+        _maxAll = 1000000;
+        _maxPVs = 1000000;
+        _maxPeers = 1000000;
+        _showRequestRates = false;
         }
 
 GatewayStatus::
@@ -190,6 +261,37 @@ showPVConnections()
                 fprintf( stdout, "\n");
                 showRPCResults( pvName);
                 }
+
+        return true;
+        }
+
+bool GatewayStatus::
+showTransferRates()
+        {
+
+        fprintf( stdout, "    Client and IOC Transfer Rates :\n");
+
+        fprintf( stdout, "        Gateway's Server Side:\n");
+        (void)showHostRates( true, true);
+        if( _showRequestRates)
+                (void)showHostRates( true, false);
+
+        fprintf( stdout, "        Gateway's Client Side:\n");
+        (void)showHostRates( false, false);
+        if( _showRequestRates)
+                (void)showHostRates( false, true);
+
+        fprintf( stdout, "    PV Transfer Rates:\n");
+
+        fprintf( stdout, "        Gateway's Server Side:\n");
+        (void)showPVRates( true, true);
+        if( _showRequestRates)
+                (void)showPVRates( true, false);
+
+        fprintf( stdout, "        Gateway's Client Side:\n");
+        (void)showPVRates( false, false);
+        if( _showRequestRates)
+                (void)showPVRates( false, true);
 
         return true;
         }
@@ -310,23 +412,24 @@ showHostRates( bool isDownstream, bool findTransmitRate)
                 return false;
                 }
 
-        for( unsigned int i = 0; i < sizeHost; i++)
+        unsigned int limit = findMin( sizeHost, _maxPeers, _maxAll);
+        for( unsigned int i = 0; i < limit; i++)
                 {
                 string hostName = convertFromIPAddr( host[i]);
 
                 if( findTransmitRate)
                         {
                         if( isDownstream)
-                                fprintf( stdout, "            Gateway transmits %.4g bytes/second  to  %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
+                                fprintf( stdout, "            Gateway transmits %9.4f bytes/second  to  %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
                             else
-                                fprintf( stdout, "            Gateway transmits %.4g bytes/second  to  %s\n", rate[i], hostName.c_str());
+                                fprintf( stdout, "            Gateway transmits %9.4f bytes/second  to  %s\n", rate[i], hostName.c_str());
                         }
                     else
                         {
                         if( isDownstream)
-                                fprintf( stdout, "            Gateway receives  %.4g bytes/second from %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
+                                fprintf( stdout, "            Gateway receives  %9.4f bytes/second from %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
                             else
-                                fprintf( stdout, "            Gateway receives  %.4g bytes/second from %s\n", rate[i], hostName.c_str());
+                                fprintf( stdout, "            Gateway receives  %9.4f bytes/second from %s\n", rate[i], hostName.c_str());
                         }
                 }
 
@@ -380,17 +483,18 @@ showPVRates( bool isDownstream, bool findTransmitRate)
                 return false;
                 }
 
-        for( unsigned int i = 0; i < numPVs; i++)
+        unsigned int limit = findMin( numPVs, _maxPVs, _maxAll);
+        for( unsigned int i = 0; i < limit; i++)
                 if( isDownstream)
                         if( findTransmitRate)
-                                fprintf( stdout, "            Gateway forwards %.4g bytes/second of %s data to clients\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway forwards  %9.4f bytes/second of %s data to clients\n", rate[i], pvName[i].c_str());
                             else
-                                fprintf( stdout, "            Gateway requests %.4g bytes/second of %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway requests  %9.4f bytes/second of %s data\n", rate[i], pvName[i].c_str());
                     else
                         if( findTransmitRate)
-                                fprintf( stdout, "            Gateway sends %.4g bytes/second to request %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway sends     %9.4f bytes/second to request %s data\n", rate[i], pvName[i].c_str());
                             else
-                                fprintf( stdout, "            Gateway receives %.4g bytes/second of %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway receives  %9.4f bytes/second of %s data\n", rate[i], pvName[i].c_str());
 
         return true;
         }
