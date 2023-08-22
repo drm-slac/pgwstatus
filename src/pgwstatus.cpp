@@ -28,8 +28,8 @@ class GatewayStatus
                 void showHelp( string appName);
                 bool showRPCResults( string pvName);
                 bool showPermissions( pvxs::Value result);
-                int checkOptionValue( string value, const string mesg);
                 bool showPVRates( bool isDownstream, bool findTransmitRate);
+                int checkOptionValue( const string value, const string mesg);
                 bool showHostRates( bool isDownstream, bool findTransmitRate);
                 bool getPVData( string pvName, string errContext, pvxs::Value &pvData);
 
@@ -43,19 +43,26 @@ class GatewayStatus
                 client::Context _context;
         };
 
-unsigned int
-findMin( unsigned int a, unsigned int b, unsigned int c)
+int
+main( int argc, char *const argv[])
         {
+        unsigned int i;
+        unsigned int nargs = argc;
 
-        if( a < b)
+        GatewayStatus status;
+
+        for( i = status.setGatewayOptions( argc, argv); i < nargs; i++)
                 {
-                if( a < c)
-                        return a;
-                return c;
+                status.setGatewayName( argv[i]);
+
+                if( ! status.showIOCConnections())
+                        continue;
+
+                (void)status.showPVConnections();
+                (void)status.showTransferRates();
                 }
-        if( b < c)
-                return b;
-        return c;
+
+        return 0;
         }
 
 unsigned int GatewayStatus::
@@ -66,21 +73,10 @@ setGatewayOptions( int argc, char *const argv[])
         extern int opterr;
 
         opterr = 0;
-	while (( c = getopt( argc, argv, ":hm:p:rs:u:")) != -1)
+	while (( c = getopt( argc, argv, ":c:hm:p:r")) != -1)
                 {
 		switch (c)
                         {
-                case ':':
-                        fprintf( stdout, "Missing value for '%c' option.\n\n", optopt);
-                        exit( 1);
-                        break;
-
-                case '?':
-                        fprintf( stdout, "Unrecognized option ('%c')\n\n", optopt);
-                        /* fall through */
-		case 'h':
-                        showHelp( argv[0]);
-                        break;
 
                 case 'm':
                         _maxAll = checkOptionValue( optarg, "Missing value to limit number of PVs or computer names in report.");
@@ -94,17 +90,23 @@ setGatewayOptions( int argc, char *const argv[])
                         _showRequestRates = true;
                         break;
 
-                case 's':
+                case 'c':
                         _maxPeers = checkOptionValue( optarg, "Missing value to limit number of computer names in output.");
                         break;
 
-		case 'u':
-			fprintf( stdout, "Option 'u': '%s'\n", optarg);
-			break;
+                case ':':
+                        fprintf( stderr, "Missing value for '%c' option.\n\n", optopt);
+                        exit( 1);
+                        break;
 
 		default:
-			fprintf( stderr, "Illegal argument \"%c\"\n", c);
-			exit( 1);
+                        optopt = c;
+                        /* fall through */
+                case '?':
+			fprintf( stderr, "Unrecognized option (\"%c\")\n\n", optopt);
+                        /* fall through */
+		case 'h':
+                        showHelp( argv[0]);
                         break;
                         }
                 }
@@ -113,7 +115,7 @@ setGatewayOptions( int argc, char *const argv[])
         }
 
 int GatewayStatus::
-checkOptionValue( string value, const string mesg)
+checkOptionValue( const string value, const string mesg)
         {
 
         if( ! isdigit( value[0]))
@@ -136,32 +138,10 @@ showHelp( string appName)
         fprintf( stdout, "  -h   print this message then exit.\n");
         fprintf( stdout, "  -r   Include the rates measured for requests, both coming\n");
         fprintf( stdout, "       into the gateway, and then from the gateway to IOCs\n");
-        fprintf( stdout, "  -m N Report only the top 'N' transfer rates for PVs and Servers\n");
+        fprintf( stdout, "  -m N Report only the top 'N' transfer rates for PVs and Computers\n");
+        fprintf( stdout, "  -c N Report only the top 'N' transfer rates for Computers\n");
         fprintf( stdout, "  -p N Report only the top 'N' transfer rates for PVs\n");
-        fprintf( stdout, "  -s N Report only the top 'N' transfer rates for Servers\n");
         exit( 0);
-        }
-
-int
-main( int argc, char *const argv[])
-        {
-        unsigned int i;
-        unsigned int nargs = argc;
-
-        GatewayStatus status;
-
-        for( i = status.setGatewayOptions( argc, argv); i < nargs; i++)
-                {
-                status.setGatewayName( argv[i]);
-
-                if( ! status.showIOCConnections())
-                        continue;
-
-                (void)status.showPVConnections();
-                (void)status.showTransferRates();
-                }
-
-        return 0;
         }
 
 GatewayStatus::
@@ -348,6 +328,21 @@ showPermissions( pvxs::Value fields)
                 //std::cout << "*** FOUND " << perms.nameOf( fld) <<" : "<<fld<<"\n";
                 //}
         return true;
+        }
+
+unsigned int
+findMin( unsigned int a, unsigned int b, unsigned int c)
+        {
+
+        if( a < b)
+                {
+                if( a < c)
+                        return a;
+                return c;
+                }
+        if( b < c)
+                return b;
+        return c;
         }
 
 bool GatewayStatus::
