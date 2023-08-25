@@ -158,6 +158,7 @@ _context( client::Context::fromEnv())
 GatewayStatus::
 ~GatewayStatus()
         {
+
         _context.close();
         }
 
@@ -237,8 +238,7 @@ showPVConnections()
         for( i = 0; i < val.size(); i++)
                 {
                 string pvName = val[i];
-                fprintf( stdout, "        %s", pvName.c_str());
-                fprintf( stdout, "\n");
+                fprintf( stdout, "        %s\n", pvName.c_str());
                 showRPCResults( pvName);
                 }
 
@@ -292,9 +292,9 @@ showRPCResults( string pvName)
                 fprintf( stdout, "       Cannot access gateway '%s' for details on '%s'\n", _gatewayName.c_str(), pvName.c_str());
                 return false;
                 }
-            catch( ...)
+            catch( std::exception& err)
                 {
-                fprintf( stdout, "       Cannot retrieve details for %s'\n", pvName.c_str());
+                fprintf( stdout, "       Cannot retrieve details for %s' (%s)\n", pvName.c_str(), err.what());
                 return false;
                 }
 
@@ -322,11 +322,6 @@ showPermissions( pvxs::Value fields)
 
         fprintf( stdout, "            PUT operations are %sallowed\n", perms["put"].as<bool>() ? "" : "NOT ");
         fprintf( stdout, "            RPC operations are %sallowed\n", perms["rpc"].as<bool>() ? "" : "NOT ");
-
-        //for( Value fld : perms.ichildren())
-                //{
-                //std::cout << "*** FOUND " << perms.nameOf( fld) <<" : "<<fld<<"\n";
-                //}
         return true;
         }
 
@@ -415,16 +410,16 @@ showHostRates( bool isDownstream, bool findTransmitRate)
                 if( findTransmitRate)
                         {
                         if( isDownstream)
-                                fprintf( stdout, "            Gateway transmits %9.4f bytes/second  to  %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
+                                fprintf( stdout, "            Gateway transmits %10.2f bytes/second  to  %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
                             else
-                                fprintf( stdout, "            Gateway transmits %9.4f bytes/second  to  %s\n", rate[i], hostName.c_str());
+                                fprintf( stdout, "            Gateway transmits %10.2f bytes/second  to  %s\n", rate[i], hostName.c_str());
                         }
                     else
                         {
                         if( isDownstream)
-                                fprintf( stdout, "            Gateway receives  %9.4f bytes/second from %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
+                                fprintf( stdout, "            Gateway receives  %10.2f bytes/second from %s on %s\n", rate[i], user[i].c_str(), hostName.c_str());
                             else
-                                fprintf( stdout, "            Gateway receives  %9.4f bytes/second from %s\n", rate[i], hostName.c_str());
+                                fprintf( stdout, "            Gateway receives  %10.2f bytes/second from %s\n", rate[i], hostName.c_str());
                         }
                 }
 
@@ -482,14 +477,14 @@ showPVRates( bool isDownstream, bool findTransmitRate)
         for( unsigned int i = 0; i < limit; i++)
                 if( isDownstream)
                         if( findTransmitRate)
-                                fprintf( stdout, "            Gateway forwards  %9.4f bytes/second of %s data to clients\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway transmits %10.2f bytes/second of %s data to clients\n", rate[i], pvName[i].c_str());
                             else
-                                fprintf( stdout, "            Gateway requests  %9.4f bytes/second of %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway receives  %10.2f bytes/second of %s data\n", rate[i], pvName[i].c_str());
                     else
                         if( findTransmitRate)
-                                fprintf( stdout, "            Gateway sends     %9.4f bytes/second to request %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway transmits %10.2f bytes/second to request %s data\n", rate[i], pvName[i].c_str());
                             else
-                                fprintf( stdout, "            Gateway receives  %9.4f bytes/second of %s data\n", rate[i], pvName[i].c_str());
+                                fprintf( stdout, "            Gateway receives  %10.2f bytes/second of %s data\n", rate[i], pvName[i].c_str());
 
         return true;
         }
