@@ -40,3 +40,7 @@ It makes use of several PVs created within the **p4p gateway** software, includi
 * us:byhost:rx
 * us:byhost:tx
 
+It requires
+* C++11 or later compiler
+* PVXS R1.2.0 or later
+* EPICS 7 or later
