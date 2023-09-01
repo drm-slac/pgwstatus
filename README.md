@@ -1,10 +1,10 @@
 # PVA Gateway Status
 
-## Purpose
+### Purpose
 
 This software displays the status of a running EPICS 7 (PVAccess) Gateway.
 
-## Command Line Options
+### Command Line Options
 
 Usage: pgwstatus [OPTIONS] gateway-name-prefix ...
 
@@ -22,3 +22,20 @@ The following options are supported:
 	-c N Report only the top 'N' transfer rates for Computers
 	-p N Report only the top 'N' transfer rates for PVs
 
+### Details
+
+The *pgwstatus* software uses the **pvxs** library.
+
+It makes use of several PVs created within the **p4p gateway** software, including:
+
+* asTest
+* clients
+* cache
+* ds:bypv:rx
+* ds:bypv:tx
+* us:bypv:rx
+* us:bypv:tx
+* ds:byhost:rx
+* ds:byhost:tx
+* us:byhost:rx
+* us:byhost:tx
